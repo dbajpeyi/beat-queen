@@ -58,6 +58,34 @@ a jewel down beat lamp. The window can be resized.
 
 The MRK-1 has no accent dynamics, so velocity is ignored.
 
+## Downloading a build
+
+Every push builds Beat Queen on GitHub Actions. Open a run under the
+repository's **Actions** tab and download the archive for your system from
+**Artifacts**:
+
+| Archive | Contents |
+|---|---|
+| `beat-queen-macOS` | Standalone app, VST3 and AU (universal: Apple Silicon and Intel) |
+| `beat-queen-Windows` | Standalone app and VST3 |
+| `beat-queen-Linux` | Standalone app and VST3 |
+
+### macOS: "Beat Queen is damaged and can't be opened"
+
+The builds are signed ad hoc, not with an Apple Developer ID, and are not
+notarized. macOS shows that message for any such app downloaded from the
+internet. It means "not notarized", not "corrupt". After unzipping, remove
+the download quarantine flag in Terminal:
+
+```sh
+xattr -dr com.apple.quarantine "/path/to/Beat Queen.app"
+```
+
+Do the same for `Beat Queen.vst3` and `Beat Queen.component` before copying
+them to `~/Library/Audio/Plug-Ins/VST3` and `~/Library/Audio/Plug-Ins/Components`.
+
+If you build Beat Queen yourself (below), none of this applies.
+
 ## Building
 
 Requires CMake ≥ 3.22 and a C++17 compiler. JUCE 8 is downloaded

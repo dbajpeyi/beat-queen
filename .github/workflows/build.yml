@@ -10,7 +10,7 @@ jobs:
     name: Core tests (no JUCE)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure
         run: cmake -S . -B build-core -DBEATQUEEN_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -21,7 +21,7 @@ jobs:
         run: |
           mkdir -p renders
           ./build-core/beatqueen_render renders 48000 120
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: beat-queen-renders
           path: renders/*.wav
@@ -34,7 +34,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -44,7 +44,14 @@ jobs:
             libxcomposite-dev libfreetype-dev libfontconfig1-dev libgl1-mesa-dev
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+        shell: bash
+        run: |
+          extra=()
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # Universal binary: runs natively on Apple Silicon and Intel Macs.
+            extra=(-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
+          fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release "${extra[@]}"
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -52,11 +59,40 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - uses: actions/upload-artifact@v4
+      # Artifact uploads drop file permissions (and with them the executable bit
+      # and code signatures inside macOS bundles), so pack each platform's
+      # builds into an archive that preserves them.
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        working-directory: build/BeatQueen_artefacts/Release
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for bundle in "Standalone/Beat Queen.app" "VST3/Beat Queen.vst3" "AU/Beat Queen.component"; do
+            # Ad-hoc signature (no Developer ID): required for arm64 code.
+            codesign --force --deep --sign - "$bundle"
+            codesign --verify --deep --strict --verbose=2 "$bundle"
+            lipo -archs "$(find "$bundle/Contents/MacOS" -type f | head -1)"
+          done
+          ditto -c -k --keepParent "Standalone/Beat Queen.app" "$GITHUB_WORKSPACE/dist/BeatQueen-macOS-Standalone.zip"
+          ditto -c -k --keepParent "VST3/Beat Queen.vst3" "$GITHUB_WORKSPACE/dist/BeatQueen-macOS-VST3.zip"
+          ditto -c -k --keepParent "AU/Beat Queen.component" "$GITHUB_WORKSPACE/dist/BeatQueen-macOS-AU.zip"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist
+          tar -czf dist/BeatQueen-Linux.tar.gz -C build/BeatQueen_artefacts/Release VST3 Standalone
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build/BeatQueen_artefacts/Release/VST3, build/BeatQueen_artefacts/Release/Standalone `
+            -DestinationPath dist/BeatQueen-Windows.zip
+
+      - uses: actions/upload-artifact@v5
         with:
           name: beat-queen-${{ runner.os }}
-          path: |
-            build/BeatQueen_artefacts/Release/VST3
-            build/BeatQueen_artefacts/Release/Standalone
-            build/BeatQueen_artefacts/Release/AU
+          path: dist/*
           if-no-files-found: error
