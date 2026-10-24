@@ -1,0 +1,16 @@
+Beat Queen for Windows (64-bit)
+===============================
+
+These builds are not code-signed, so Windows SmartScreen may say "Windows
+protected your PC" the first time you run the app.
+
+1. Right-click the downloaded zip, choose Properties, tick "Unblock" if it is
+   shown, click OK, then extract it. (This removes the download mark from
+   every file inside, including the plug-in.)
+
+2. Standalone app: open Standalone\Beat Queen.exe. If SmartScreen appears,
+   click "More info", then "Run anyway".
+
+3. VST3 plug-in: copy the folder VST3\Beat Queen.vst3 to
+     C:\Program Files\Common Files\VST3\
+   then rescan plug-ins in your DAW.

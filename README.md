@@ -84,6 +84,22 @@ xattr -dr com.apple.quarantine "/path/to/Beat Queen.app"
 Do the same for `Beat Queen.vst3` and `Beat Queen.component` before copying
 them to `~/Library/Audio/Plug-Ins/VST3` and `~/Library/Audio/Plug-Ins/Components`.
 
+### Windows: "Windows protected your PC"
+
+The builds are not code-signed, so SmartScreen may warn on first launch:
+
+- Before extracting, right-click the zip, choose **Properties**, tick
+  **Unblock**, then extract. This also clears the download mark from the
+  plug-in.
+- Click **More info**, then **Run anyway** to start the app.
+- Copy `Beat Queen.vst3` to `C:\Program Files\Common Files\VST3\`.
+
+### Linux
+
+Extract with `tar -xzf`, so the executable permissions are kept. Copy
+`Beat Queen.vst3` to `~/.vst3/`.
+
+Every archive includes an `INSTALL.txt` with these steps for its platform.
 If you build Beat Queen yourself (below), none of this applies.
 
 ## Building

@@ -1,0 +1,15 @@
+Beat Queen for Linux (x86-64)
+=============================
+
+Extract with:
+  tar -xzf BeatQueen-Linux.tar.gz
+
+Standalone app:
+  ./Standalone/"Beat Queen"
+
+VST3 plug-in:
+  mkdir -p ~/.vst3
+  cp -R "VST3/Beat Queen.vst3" ~/.vst3/
+
+Needs ALSA (or JACK) and the usual X11/freetype/fontconfig libraries, which
+desktop distributions already have.

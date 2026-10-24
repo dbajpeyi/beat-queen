@@ -76,20 +76,25 @@ jobs:
           ditto -c -k --keepParent "Standalone/Beat Queen.app" "$GITHUB_WORKSPACE/dist/BeatQueen-macOS-Standalone.zip"
           ditto -c -k --keepParent "VST3/Beat Queen.vst3" "$GITHUB_WORKSPACE/dist/BeatQueen-macOS-VST3.zip"
           ditto -c -k --keepParent "AU/Beat Queen.component" "$GITHUB_WORKSPACE/dist/BeatQueen-macOS-AU.zip"
+          cp "$GITHUB_WORKSPACE/packaging/INSTALL-macOS.txt" "$GITHUB_WORKSPACE/dist/INSTALL.txt"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: |
           mkdir -p dist
-          tar -czf dist/BeatQueen-Linux.tar.gz -C build/BeatQueen_artefacts/Release VST3 Standalone
+          cp packaging/INSTALL-Linux.txt build/BeatQueen_artefacts/Release/INSTALL.txt
+          tar -czf dist/BeatQueen-Linux.tar.gz -C build/BeatQueen_artefacts/Release VST3 Standalone INSTALL.txt
+          cp packaging/INSTALL-Linux.txt dist/INSTALL.txt
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path build/BeatQueen_artefacts/Release/VST3, build/BeatQueen_artefacts/Release/Standalone `
+          Copy-Item packaging/INSTALL-Windows.txt build/BeatQueen_artefacts/Release/INSTALL.txt
+          Compress-Archive -Path build/BeatQueen_artefacts/Release/VST3, build/BeatQueen_artefacts/Release/Standalone, build/BeatQueen_artefacts/Release/INSTALL.txt `
             -DestinationPath dist/BeatQueen-Windows.zip
+          Copy-Item packaging/INSTALL-Windows.txt dist/INSTALL.txt
 
       - uses: actions/upload-artifact@v5
         with:

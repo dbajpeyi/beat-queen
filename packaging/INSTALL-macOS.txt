@@ -1,0 +1,26 @@
+Beat Queen for macOS (universal: Apple Silicon and Intel)
+=========================================================
+
+These builds are signed ad hoc, not with an Apple Developer ID, and are not
+notarized. macOS therefore says "Beat Queen is damaged and can't be opened"
+when you open a downloaded copy. It is not damaged: remove the download
+quarantine flag once, in Terminal, then open it normally.
+
+1. Unzip the archive(s).
+
+2. Standalone app:
+     xattr -dr com.apple.quarantine "Beat Queen.app"
+   Then move it to /Applications if you like and double-click it.
+
+3. VST3 plug-in:
+     xattr -dr com.apple.quarantine "Beat Queen.vst3"
+     mkdir -p ~/Library/Audio/Plug-Ins/VST3
+     cp -R "Beat Queen.vst3" ~/Library/Audio/Plug-Ins/VST3/
+
+4. Audio Unit (Logic, GarageBand, ...):
+     xattr -dr com.apple.quarantine "Beat Queen.component"
+     mkdir -p ~/Library/Audio/Plug-Ins/Components
+     cp -R "Beat Queen.component" ~/Library/Audio/Plug-Ins/Components/
+     killall -9 AudioComponentRegistrar   # makes hosts rescan Audio Units
+
+Run each command from the folder you unzipped into (or give full paths).
