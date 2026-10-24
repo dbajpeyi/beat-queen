@@ -108,7 +108,22 @@ plugin/         JUCE processor and front panel (VST3 / AU / Standalone)
 tests/          core tests, including comparisons with ngspice
 tools/          offline WAV renderer, ngspice reference script
 docs/DESIGN.md  how the circuits were modeled, sources, assumptions, validation
+docs/guide/     an 11-page tutorial on the techniques, from first principles
 ```
+
+## Learn how it works
+
+[`docs/guide/`](docs/guide/README.md) is a step-by-step tutorial for anyone
+who wants to model a vintage instrument from its schematics. It covers:
+
+- reading scanned schematics and writing netlists;
+- nodal analysis and the trapezoidal rule;
+- Newton's method and the K-method;
+- real-time optimization;
+- how each MRK-1 voice works;
+- decoding the clock and rhythm wiring;
+- validating against SPICE;
+- building the plugin.
 
 Beat Queen is an independent recreation. Maestro and Rhythm King are
 trademarks of their respective owners. The service manual is not included in
