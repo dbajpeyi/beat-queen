@@ -10,12 +10,13 @@ option(BEATQUEEN_BUILD_PLUGIN "Build the JUCE plugin and standalone app (downloa
 option(BEATQUEEN_BUILD_TESTS "Build the core tests and offline renderer" ON)
 
 # ---------------------------------------------------------------------------
-# Core: voices, sequencer, mixer. Plain C++, no JUCE.
+# Core: circuit simulator, MRK-1 instrumentation, rhythms, clock. Plain C++, no JUCE.
 # ---------------------------------------------------------------------------
 add_library(beatqueen_core STATIC
     core/src/DrumMachine.cpp
-    core/src/Pattern.cpp
-    core/src/Voices.cpp)
+    core/src/circuit/Circuit.cpp
+    core/src/mrk1/Instrumentation.cpp
+    core/src/mrk1/Rhythms.cpp)
 target_include_directories(beatqueen_core PUBLIC core/include)
 if(MSVC)
     target_compile_options(beatqueen_core PRIVATE /W4)

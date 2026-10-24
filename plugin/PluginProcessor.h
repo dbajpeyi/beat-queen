@@ -36,13 +36,14 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     // Safe to call from the message thread.
-    void tapVoice(beatqueen::VoiceId id) { machine_.requestManualTrigger(id); }
-    int currentStep() const { return machine_.currentStep(); }
-    int patternLength() const { return machine_.patternLength(); }
+    void setVoiceButton(beatqueen::mrk1::Button b, bool down) { machine_.requestButton(b, down); }
+    int currentPulse() const { return machine_.currentPulse(); }
+    bool downBeatLamp() const { return machine_.downBeatLamp(); }
 
     juce::AudioProcessorValueTreeState parameters;
 
-    static juce::String levelParamId(int voice) { return "level_" + juce::String(voice); }
+    static juce::String rhythmParamId(int rhythm) { return "rhythm_" + juce::String(rhythm); }
+    static juce::String trimParamId(int trim) { return "vr" + juce::String(trim + 1); }
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -50,14 +51,14 @@ private:
 
     beatqueen::DrumMachine machine_;
     std::vector<float> mono_;
-    int selectedRhythm_ = -1;
 
-    juce::AudioParameterChoice* rhythm_ = nullptr;
+    std::array<std::atomic<float>*, beatqueen::mrk1::kNumRhythms> rhythms_ {};
+    std::array<std::atomic<float>*, beatqueen::mrk1::kNumTrims> trims_ {};
+    std::array<float, beatqueen::mrk1::kNumTrims> appliedTrims_ {};
     std::atomic<float>* tempo_ = nullptr;
     std::atomic<float>* run_ = nullptr;
     std::atomic<float>* hostSync_ = nullptr;
-    std::atomic<float>* master_ = nullptr;
-    std::array<std::atomic<float>*, beatqueen::kNumVoices> levels_ {};
+    std::atomic<float>* volume_ = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BeatQueenProcessor)
 };

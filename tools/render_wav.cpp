@@ -1,11 +1,12 @@
-// Offline renderer: writes each voice and each preset to WAV files so the
-// models can be auditioned and compared against recordings of a real MRK-1.
+// Offline renderer: writes every instrument and every preset rhythm to WAV
+// files, for auditioning the circuit models and comparing them with
+// recordings of a real MRK-1.
 //
-//   beatqueen_render <output-dir> [sample-rate]
+//   beatqueen_render <output-dir> [sample-rate] [tempo-bpm]
 
 #include "beatqueen/DrumMachine.h"
-#include "beatqueen/Pattern.h"
-#include "beatqueen/Voices.h"
+#include "beatqueen/mrk1/Instrumentation.h"
+#include "beatqueen/mrk1/Rhythms.h"
 
 #include <algorithm>
 #include <cctype>
@@ -57,47 +58,74 @@ std::string slug(std::string s)
     return s;
 }
 
+const char* keyName(mrk1::KeyPoint k)
+{
+    using K = mrk1::KeyPoint;
+    switch (k)
+    {
+        case K::BassDrum: return "bass_drum";
+        case K::TomTom: return "tom_tom";
+        case K::Bongo: return "bongo";
+        case K::Blocks: return "blocks";
+        case K::Clave: return "clave";
+        case K::RimShot: return "rim_shot";
+        case K::HiDrum: return "hi_drum";
+        case K::LoDrum: return "lo_drum";
+        case K::LoDrumSoft: return "lo_drum_soft";
+        case K::Snare: return "snare_drum";
+        case K::HiHat: return "hi_hat";
+        case K::Cymbal: return "cymbal";
+        case K::Count: break;
+    }
+    return "unknown";
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     if (argc < 2)
     {
-        std::fprintf(stderr, "usage: %s <output-dir> [sample-rate]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <output-dir> [sample-rate] [tempo-bpm]\n", argv[0]);
         return 2;
     }
     const std::string dir = argv[1];
     const int sampleRate = argc > 2 ? std::atoi(argv[2]) : 48000;
+    const double tempo = argc > 3 ? std::atof(argv[3]) : 120.0;
+    const float scale = 1.0f / DrumMachine::kFullScaleVolts;
 
-    for (int i = 0; i < kNumVoices; ++i)
+    mrk1::Instrumentation inst;
+    inst.prepare(sampleRate);
+    for (int k = 0; k < mrk1::kNumKeyPoints; ++k)
     {
-        const auto id = static_cast<VoiceId>(i);
-        auto voice = makeVoice(id);
-        voice->prepare(sampleRate);
-        voice->trigger(1.0f);
-
+        for (int i = 0; i < sampleRate / 2; ++i)
+            inst.process();
         std::vector<float> out(static_cast<size_t>(sampleRate * 2));
+        inst.key(static_cast<mrk1::KeyPoint>(k));
         for (auto& s : out)
-            s = 0.8f * voice->process();
+            s = scale * inst.process();
 
-        const auto path = dir + "/voice_" + slug(voiceName(id)) + ".wav";
+        const auto path = dir + "/instrument_" + keyName(static_cast<mrk1::KeyPoint>(k)) + ".wav";
         if (!writeWav(path, out, sampleRate))
             return 1;
         std::printf("%s\n", path.c_str());
     }
 
-    const auto& bank = presetPatterns();
-    for (size_t p = 0; p < bank.size(); ++p)
+    const auto& bank = mrk1::rhythms();
+    for (size_t r = 0; r < bank.size(); ++r)
     {
         DrumMachine dm;
         dm.prepare(sampleRate);
-        dm.selectPattern(static_cast<int>(p));
+        dm.setVolume(1.0f);
+        dm.setTempo(tempo);
+        dm.setRhythms(1u << r);
         dm.setRunning(true);
 
-        std::vector<float> out(static_cast<size_t>(sampleRate * 8));
+        // Two full clock cycles (16 beats).
+        std::vector<float> out(static_cast<size_t>(16.0 * 60.0 / tempo * sampleRate));
         dm.render(out.data(), static_cast<int>(out.size()), nullptr);
 
-        const auto path = dir + "/rhythm_" + slug(bank[p].name) + ".wav";
+        const auto path = dir + "/rhythm_" + std::to_string(r + 1) + "_" + slug(bank[r].name) + ".wav";
         if (!writeWav(path, out, sampleRate))
             return 1;
         std::printf("%s\n", path.c_str());
