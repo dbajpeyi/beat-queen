@@ -16,20 +16,27 @@ the rhythm selector wiring and the 5-stage ring clock.
 
 ## Using it
 
-- **Rhythm buttons** (red Latin, gold American, blue Traditional) latch. As
+The front panel follows the original cabinet. It has a black plexi rhythm
+panel in chrome trim, a brushed aluminium faceplate, chrome knurled knobs and
+a jewel down beat lamp. The window can be resized.
+
+- **Rhythm keys** (red Latin, yellow American, teal Traditional) latch. As
   on the original, you can combine several. Picking any triplet rhythm
   switches the whole clock to triplet timing, so straight rhythms played
   alongside it are re-timed, just as on the hardware.
-- **START** is the reset foot switch: it starts the rhythm from the down beat.
-- **SPEED** sets the tempo in BPM. The **DOWN BEAT** lamp flashes every 4
-  beats, and the clock lights show the 20 pulses of the 8-beat cycle.
+- **START / STOP** (the rocker) stands in for the reset foot switch: it
+  starts the rhythm from the down beat.
+- **SPEED** sets the tempo in BPM; drag it to see the exact value. The
+  **DOWN BEAT** lamp flashes every 4 beats.
 - **Voice buttons** play the eight instruments by hand, with or without a
   rhythm running. Holding the snare drum button rolls it, as on the
   original.
-- **Host sync:** in a DAW, while the transport plays, the rhythm follows the
-  host's tempo and bar position. When it is stopped, or in the standalone
-  app, START runs the internal clock.
-- **Service adjustments** opens the twelve internal trimmers:
+- **Host sync** (the small toggle under the lamp): in a DAW, while the
+  transport plays, the rhythm follows the host's tempo and bar position.
+  When it is stopped, or in the standalone app, the rocker runs the internal
+  clock.
+- **SERVICE** opens the case. The drawer shows the instrumentation board,
+  with lights for the clock's 20 pulses and the twelve trimmers:
   - VR1-VR8 set each drum's length, from "dead" to "rings continuously".
   - VR9 sets the snare roll speed.
   - VR10-VR12 set the noise voice volumes.

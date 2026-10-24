@@ -66,7 +66,8 @@ if(BEATQUEEN_BUILD_PLUGIN)
 
     target_sources(BeatQueen PRIVATE
         plugin/PluginProcessor.cpp
-        plugin/PluginEditor.cpp)
+        plugin/PluginEditor.cpp
+        plugin/PanelComponents.cpp)
 
     target_compile_definitions(BeatQueen PUBLIC
         JUCE_WEB_BROWSER=0

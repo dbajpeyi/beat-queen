@@ -2,127 +2,335 @@
 
 namespace {
 
-namespace colours {
-const juce::Colour cabinet { 0xff2b1d14 };
-const juce::Colour panel { 0xff3a2a1e };
-const juce::Colour faceplate { 0xffd9d4c7 };
-const juce::Colour ink { 0xff1d1a17 };
-const juce::Colour cream { 0xfff2e6cf };
-const juce::Colour amber { 0xffe8902a };
-const juce::Colour lampOff { 0xff4d3626 };
-const juce::Colour latin { 0xffc0392b };
-const juce::Colour american { 0xffd4a017 };
-const juce::Colour traditional { 0xff2e6db4 };
-const juce::Colour voiceButton { 0xff151515 };
-} // namespace colours
+using namespace beatqueen;
+namespace col = beatqueen::ui::colours;
 
-constexpr int kWidth = 960;
-constexpr int kHeight = 470;
-constexpr int kServiceHeight = 150;
+// Base-size geometry, modelled on the Rhythm King cabinet.
+const juce::Rectangle<float> kCabinet { 10.0f, 26.0f, 1100.0f, 508.0f };
+const juce::Rectangle<float> kUpperFrame { 40.0f, 56.0f, 1040.0f, 248.0f };
+const juce::Rectangle<float> kFaceplate { 40.0f, 314.0f, 1040.0f, 194.0f };
+const juce::Rectangle<float> kControlBlock { 214.0f, 344.0f, 352.0f, 116.0f };
 
-juce::Colour categoryColour(beatqueen::mrk1::Category c)
+constexpr float kFrame = 10.0f;
+constexpr int kKeyWidth = 42, kKeyHeight = 34, kKeyGap = 6, kKeysX = 186, kKeysY = 204;
+constexpr int kVoiceX = 636, kVoiceY = 372, kVoiceSize = 34, kVoicePitch = 52;
+
+juce::Colour capColour(mrk1::Category c)
 {
     switch (c)
     {
-        case beatqueen::mrk1::Category::Latin: return colours::latin;
-        case beatqueen::mrk1::Category::American: return colours::american;
-        case beatqueen::mrk1::Category::Traditional: return colours::traditional;
+        case mrk1::Category::Latin: return col::latin;
+        case mrk1::Category::American: return col::american;
+        case mrk1::Category::Traditional: return col::traditional;
     }
-    return colours::panel;
+    return col::chrome;
 }
 
-void styleRotary(juce::Slider& s, int textWidth = 70)
+juce::Font font(float height, bool bold = true)
 {
-    s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    s.setTextBoxStyle(juce::Slider::TextBoxBelow, false, textWidth, 18);
-    s.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    return juce::Font(juce::FontOptions(height, bold ? juce::Font::bold : juce::Font::plain));
+}
+
+// Engraved panel label with a little letter-spacing.
+void label(juce::Graphics& g, const juce::String& text, juce::Rectangle<float> r, juce::Colour c, float height,
+           juce::Justification just = juce::Justification::centred)
+{
+    g.setColour(c);
+    g.setFont(font(height).withExtraKerningFactor(0.08f));
+    g.drawFittedText(text, r.toNearestInt(), just, 2, 0.9f);
+}
+
+// Scale ticks around a knob, with optional end/number legends.
+void knobScale(juce::Graphics& g, juce::Point<float> c, float radius, int ticks, const juce::StringArray& legends)
+{
+    const float start = -2.4f, end = 2.4f; // radians from 12 o'clock, matching the slider's rotary range
+    g.setColour(col::panelText.withAlpha(0.85f));
+    for (int i = 0; i < ticks; ++i)
+    {
+        const float a = start + (end - start) * static_cast<float>(i) / static_cast<float>(ticks - 1);
+        const juce::Point<float> d(std::sin(a), -std::cos(a));
+        g.fillEllipse(juce::Rectangle<float>(2.4f, 2.4f).withCentre(c + d * radius));
+    }
+    g.setFont(font(8.5f));
+    for (int i = 0; i < legends.size(); ++i)
+    {
+        const float a = start + (end - start) * static_cast<float>(i) / static_cast<float>(juce::jmax(1, legends.size() - 1));
+        const juce::Point<float> d(std::sin(a), -std::cos(a));
+        g.drawText(legends[i], juce::Rectangle<float>(26.0f, 10.0f).withCentre(c + d * (radius + 9.0f)),
+                   juce::Justification::centred);
+    }
 }
 
 } // namespace
 
-BeatQueenEditor::BeatQueenEditor(BeatQueenProcessor& p) : AudioProcessorEditor(p), processor_(p)
+// ---------------------------------------------------------------------------
+
+FrontPanel::FrontPanel(BeatQueenProcessor& p) : processor_(p)
 {
-    using namespace beatqueen::mrk1;
-
-    auto& lf = lookAndFeel_;
-    lf.setColour(juce::Slider::thumbColourId, colours::amber);
-    lf.setColour(juce::Slider::rotarySliderFillColourId, colours::amber);
-    lf.setColour(juce::Slider::rotarySliderOutlineColourId, colours::lampOff);
-    lf.setColour(juce::Slider::textBoxTextColourId, colours::cream);
-    lf.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    lf.setColour(juce::TextButton::buttonColourId, colours::panel);
-    lf.setColour(juce::TextButton::buttonOnColourId, colours::amber);
-    lf.setColour(juce::TextButton::textColourOffId, colours::cream);
-    lf.setColour(juce::TextButton::textColourOnId, colours::ink);
-    lf.setColour(juce::ToggleButton::textColourId, colours::cream);
-    lf.setColour(juce::ToggleButton::tickColourId, colours::amber);
-    setLookAndFeel(&lookAndFeel_);
-
     auto& params = processor_.parameters;
+    tolex_ = ui::makeTolexTexture(kWidth, kMainHeight + kDrawerHeight);
+    metal_ = ui::makeBrushedMetalTexture(static_cast<int>(kFaceplate.getWidth()), static_cast<int>(kFaceplate.getHeight()));
 
-    // Rhythm selector switches: latching, and combinable as on the real panel.
-    for (int r = 0; r < kNumRhythms; ++r)
+    for (int r = 0; r < mrk1::kNumRhythms; ++r)
     {
-        auto& b = rhythmButtons_[static_cast<size_t>(r)];
-        const auto& rhythm = rhythms()[static_cast<size_t>(r)];
-        const auto colour = categoryColour(rhythm.category);
-        b.setButtonText(rhythm.name);
-        b.setClickingTogglesState(true);
-        b.setColour(juce::TextButton::buttonColourId, colour.darker(0.9f));
-        b.setColour(juce::TextButton::buttonOnColourId, colour.brighter(0.3f));
-        b.setColour(juce::TextButton::textColourOffId, colour.brighter(0.6f));
-        b.setColour(juce::TextButton::textColourOnId, colours::ink);
-        b.setTooltip(rhythm.triplet ? "Triplet timing" : "");
-        addAndMakeVisible(b);
-        rhythmAttachments_[static_cast<size_t>(r)] =
-            std::make_unique<ButtonAttachment>(params, BeatQueenProcessor::rhythmParamId(r), b);
+        const auto& rhythm = mrk1::rhythms()[static_cast<size_t>(r)];
+        auto key = std::make_unique<ui::RhythmKey>(rhythm.name, capColour(rhythm.category));
+        key->setTooltip(juce::String(rhythm.name) + (rhythm.triplet ? " (triplet timing)" : "")
+                        + ". Latching; press several to combine rhythms.");
+        addAndMakeVisible(*key);
+        rhythmAttachments_.push_back(std::make_unique<ButtonAttachment>(params, BeatQueenProcessor::rhythmParamId(r), *key));
+        rhythmKeys_.push_back(std::move(key));
     }
 
-    styleRotary(speed_);
-    addAndMakeVisible(speed_);
-    speedAttachment_ = std::make_unique<SliderAttachment>(params, "tempo", speed_);
+    addAndMakeVisible(lamp_);
+    lamp_.setTooltip("Down beat: lights every four beats");
 
-    styleRotary(volume_);
-    addAndMakeVisible(volume_);
-    volumeAttachment_ = std::make_unique<SliderAttachment>(params, "volume", volume_);
-
-    start_.setClickingTogglesState(true);
-    start_.setTooltip("The reset foot switch: starts the rhythm from the down beat");
-    addAndMakeVisible(start_);
-    startAttachment_ = std::make_unique<ButtonAttachment>(params, "run", start_);
-
-    hostSync_.setTooltip("Follow the host's tempo and bar position while it plays");
+    hostSync_.setTooltip("Host sync: follow the DAW's tempo and bar position while it plays");
     addAndMakeVisible(hostSync_);
     hostSyncAttachment_ = std::make_unique<ButtonAttachment>(params, "hostSync", hostSync_);
 
-    // The eight black voice buttons: momentary, play with or without a rhythm.
-    for (int b = 0; b < kNumButtons; ++b)
+    start_.setTooltip("Start / stop (the reset foot switch): starts the rhythm from the down beat");
+    addAndMakeVisible(start_);
+    startAttachment_ = std::make_unique<ButtonAttachment>(params, "run", start_);
+
+    for (auto* s : { &volume_, &speed_ })
     {
-        auto& vb = voiceButtons_[static_cast<size_t>(b)];
-        const auto button = static_cast<Button>(b);
-        vb.setButtonText(buttonName(button));
-        vb.setColour(juce::TextButton::buttonColourId, colours::voiceButton);
-        vb.setColour(juce::TextButton::buttonOnColourId, colours::amber);
-        vb.onPressChanged = [this, button](bool down) { processor_.setVoiceButton(button, down); };
-        addAndMakeVisible(vb);
+        s->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        s->setRotaryParameters(juce::MathConstants<float>::twoPi - 2.4f, juce::MathConstants<float>::twoPi + 2.4f, true);
+        s->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        s->setPopupDisplayEnabled(true, true, this);
+        addAndMakeVisible(*s);
+    }
+    volumeAttachment_ = std::make_unique<SliderAttachment>(params, "volume", volume_);
+    speedAttachment_ = std::make_unique<SliderAttachment>(params, "tempo", speed_);
+    speed_.setTextValueSuffix(" BPM");
+    speed_.onValueChange = [this] { repaint(kControlBlock.toNearestInt()); };
+
+    for (int b = 0; b < mrk1::kNumButtons; ++b)
+    {
+        auto& key = voiceKeys_[static_cast<size_t>(b)];
+        const auto button = static_cast<mrk1::Button>(b);
+        key.onPressChanged = [this, button](bool down) { processor_.setVoiceButton(button, down); };
+        addAndMakeVisible(key);
     }
 
-    // Service trimmers VR1-VR12.
-    serviceToggle_.setClickingTogglesState(true);
-    serviceToggle_.onClick = [this] { layoutWindow(); };
-    addAndMakeVisible(serviceToggle_);
-    for (int t = 0; t < kNumTrims; ++t)
+    service_.setClickingTogglesState(true);
+    service_.setTooltip("Open the case: the instrumentation board's trimmers VR1-VR12 and the clock");
+    service_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff1a1a1a));
+    service_.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff2a2a2a));
+    service_.setColour(juce::TextButton::textColourOffId, col::chrome);
+    service_.setColour(juce::TextButton::textColourOnId, col::lampOn);
+    service_.setColour(juce::ComboBox::outlineColourId, col::chrome.withAlpha(0.4f));
+    service_.onClick = [this] {
+        for (auto& t : trims_)
+            t.setVisible(serviceOpen());
+        if (onServiceToggled)
+            onServiceToggled();
+    };
+    addAndMakeVisible(service_);
+
+    for (int t = 0; t < mrk1::kNumTrims; ++t)
     {
         auto& s = trims_[static_cast<size_t>(t)];
-        styleRotary(s, 60);
-        s.setTooltip(trimName(static_cast<Trim>(t)));
+        s.getProperties().set("trimmer", true);
+        s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        s.setPopupDisplayEnabled(true, true, this);
+        s.setTooltip(mrk1::trimName(static_cast<mrk1::Trim>(t)));
         addChildComponent(s);
         trimAttachments_[static_cast<size_t>(t)] =
             std::make_unique<SliderAttachment>(params, BeatQueenProcessor::trimParamId(t), s);
     }
 
-    layoutWindow();
     startTimerHz(30);
+}
+
+void FrontPanel::resized()
+{
+    for (int r = 0; r < mrk1::kNumRhythms; ++r)
+        rhythmKeys_[static_cast<size_t>(r)]->setBounds(kKeysX + r * (kKeyWidth + kKeyGap), kKeysY, kKeyWidth, kKeyHeight);
+
+    lamp_.setBounds(juce::Rectangle<int>(34, 34).withCentre({ 100, 384 }));
+    hostSync_.setBounds(juce::Rectangle<int>(30, 34).withCentre({ 100, 448 }));
+
+    start_.setBounds(240, 374, 30, 52);
+    volume_.setBounds(juce::Rectangle<int>(58, 58).withCentre({ 354, 402 }));
+    speed_.setBounds(juce::Rectangle<int>(58, 58).withCentre({ 486, 402 }));
+
+    for (int b = 0; b < mrk1::kNumButtons; ++b)
+        voiceKeys_[static_cast<size_t>(b)].setBounds(kVoiceX + b * kVoicePitch, kVoiceY, kVoiceSize, 30);
+
+    service_.setBounds(984, 478, 84, 20);
+
+    const int trimWidth = 76;
+    const int trimX = (kWidth - trimWidth * mrk1::kNumTrims) / 2;
+    for (int t = 0; t < mrk1::kNumTrims; ++t)
+        trims_[static_cast<size_t>(t)].setBounds(trimX + t * trimWidth + 20, kMainHeight + 62, 36, 36);
+}
+
+void FrontPanel::paint(juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    g.fillAll(juce::Colour(0xff4a4c50)); // studio backdrop
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff5d5f63), bounds.getCentreX(), 0.0f, juce::Colour(0xff2f3033),
+                                           bounds.getCentreX(), bounds.getBottom(), false));
+    g.fillRect(bounds);
+
+    // Carry handle.
+    const auto handle = juce::Rectangle<float>(420.0f, 8.0f, 280.0f, 22.0f);
+    g.setColour(juce::Colours::black.withAlpha(0.4f));
+    g.fillRoundedRectangle(handle.translated(0.0f, 3.0f), 4.0f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff3a3a3a), 0.0f, handle.getY(), juce::Colour(0xff0e0e0e), 0.0f,
+                                           handle.getBottom(), false));
+    g.fillRoundedRectangle(handle, 4.0f);
+
+    // Tolex cabinet.
+    auto cabinet = kCabinet.withHeight(static_cast<float>(baseHeight()) - kCabinet.getY() - 6.0f);
+    g.setColour(juce::Colours::black.withAlpha(0.5f));
+    g.fillRoundedRectangle(cabinet.translated(0.0f, 4.0f), 14.0f);
+    {
+        juce::Graphics::ScopedSaveState state(g);
+        juce::Path shape;
+        shape.addRoundedRectangle(cabinet, 14.0f);
+        g.reduceClipRegion(shape);
+        g.drawImageAt(tolex_, 0, 0);
+        g.setGradientFill(juce::ColourGradient(juce::Colours::white.withAlpha(0.07f), 0.0f, cabinet.getY(),
+                                               juce::Colours::black.withAlpha(0.25f), 0.0f, cabinet.getBottom(), false));
+        g.fillRect(cabinet);
+    }
+
+    // Upper panel: black plexi in a chrome frame, three screws along the top strip.
+    ui::drawChromeFrame(g, kUpperFrame, kFrame);
+    const auto plexi = kUpperFrame.reduced(kFrame);
+    g.setColour(col::plexi);
+    g.fillRect(plexi);
+    g.setGradientFill(juce::ColourGradient(juce::Colours::white.withAlpha(0.06f), plexi.getX(), plexi.getY(),
+                                           juce::Colours::transparentWhite, plexi.getX() + 300.0f, plexi.getBottom(), false));
+    g.fillRect(plexi);
+    for (float x : { 330.0f, 560.0f, 790.0f })
+        ui::drawScrew(g, { x, kUpperFrame.getY() + kFrame * 0.5f }, 3.2f);
+
+    ui::drawEmblem(g, { 82.0f, 124.0f, 66.0f, 86.0f });
+
+    g.setColour(col::panelText);
+    ui::drawSpacedText(g, "BEAT  QUEEN", { 420.0f, 158.0f, 440.0f, 20.0f }, 15.0f);
+
+    // Rhythm group legends under the key row.
+    const float legendY = static_cast<float>(kKeysY + kKeyHeight + 6);
+    auto keyX = [](int i) { return static_cast<float>(kKeysX + i * (kKeyWidth + kKeyGap)); };
+    label(g, "LATIN", { keyX(0), legendY, 80.0f, 12.0f }, col::panelText, 8.5f, juce::Justification::centredLeft);
+    label(g, "AMERICAN", { keyX(8), legendY, keyX(15) - keyX(8), 12.0f }, col::panelText, 8.5f);
+    label(g, "TRADITIONAL", { keyX(15), legendY, keyX(18) - keyX(15) - kKeyGap, 12.0f }, col::panelText, 8.5f);
+
+    // Lower faceplate: brushed aluminium between chrome strips.
+    g.drawImageAt(metal_, static_cast<int>(kFaceplate.getX()), static_cast<int>(kFaceplate.getY()));
+    ui::drawChromeFrame(g, kFaceplate.expanded(0.0f, 2.0f), 4.0f);
+    g.setColour(juce::Colours::black.withAlpha(0.6f));
+    g.drawLine(kFaceplate.getX(), kFaceplate.getY() - 6.0f, kFaceplate.getRight(), kFaceplate.getY() - 6.0f, 1.5f);
+
+    label(g, "DOWN BEAT", { 60.0f, 350.0f, 80.0f, 12.0f }, col::engraving, 8.5f);
+    label(g, "HOST SYNC", { 60.0f, 470.0f, 80.0f, 12.0f }, col::engraving, 8.0f);
+
+    // Black control block: start rocker, volume and speed.
+    g.setColour(juce::Colours::black.withAlpha(0.35f));
+    g.fillRoundedRectangle(kControlBlock.translated(1.0f, 2.0f), 3.0f);
+    g.setColour(juce::Colour(0xff0d0d0d));
+    g.fillRoundedRectangle(kControlBlock, 3.0f);
+    label(g, "START  STOP", { 220.0f, 352.0f, 70.0f, 12.0f }, col::panelText, 8.0f);
+    label(g, "VOLUME", { 314.0f, 352.0f, 80.0f, 12.0f }, col::panelText, 8.5f);
+    label(g, "SPEED", { 446.0f, 352.0f, 80.0f, 12.0f }, col::panelText, 8.5f);
+    knobScale(g, { 354.0f, 402.0f }, 35.0f, 11, { "0", "", "", "", "", "", "", "", "", "", "10" });
+    knobScale(g, { 486.0f, 402.0f }, 35.0f, 11, { "SLOW", "", "", "", "", "", "", "", "", "", "FAST" });
+    label(g, juce::String(juce::roundToInt(speed_.getValue())) + " BPM", { 446.0f, 442.0f, 80.0f, 12.0f },
+          col::panelText.withAlpha(0.7f), 8.0f);
+
+    // Voice key legends.
+    for (int b = 0; b < mrk1::kNumButtons; ++b)
+    {
+        auto name = juce::String(mrk1::buttonName(static_cast<mrk1::Button>(b))).toUpperCase();
+        if (name == "HI-HAT CYMBAL")
+            name = "HI-HAT\nCYMBAL";
+        else
+            name = name.replace(" ", "\n");
+        label(g, name, { static_cast<float>(kVoiceX + b * kVoicePitch) - 10.0f, static_cast<float>(kVoiceY + 34), 54.0f, 24.0f },
+              col::engraving, 8.0f);
+    }
+
+    if (serviceOpen())
+        paintDrawer(g);
+}
+
+void FrontPanel::paintDrawer(juce::Graphics& g)
+{
+    // The instrumentation board, seen with the case open.
+    const auto board = juce::Rectangle<float>(40.0f, static_cast<float>(kMainHeight) + 4.0f, 1040.0f,
+                                              static_cast<float>(kDrawerHeight) - 22.0f);
+    g.setColour(col::pcb);
+    g.fillRoundedRectangle(board, 4.0f);
+    g.setColour(juce::Colour(0xffb8913a));
+    g.drawRoundedRectangle(board.reduced(3.0f), 3.0f, 1.2f);
+    for (auto corner : { board.getTopLeft() + juce::Point<float>(12, 12), board.getTopRight() + juce::Point<float>(-12, 12),
+                         board.getBottomLeft() + juce::Point<float>(12, -12), board.getBottomRight() + juce::Point<float>(-12, -12) })
+        ui::drawScrew(g, corner, 4.0f);
+
+    g.setColour(col::silkscreen);
+    g.setFont(font(10.0f));
+    g.drawText("INSTRUMENTATION BOARD    DWG NO. 4", board.reduced(28.0f, 10.0f).withHeight(14.0f),
+               juce::Justification::centredLeft);
+    g.drawText("SERVICE ADJUSTMENTS", board.reduced(28.0f, 10.0f).withHeight(14.0f), juce::Justification::centredRight);
+
+    for (int t = 0; t < mrk1::kNumTrims; ++t)
+    {
+        const auto r = trims_[static_cast<size_t>(t)].getBounds().toFloat();
+        auto name = juce::String(mrk1::trimName(static_cast<mrk1::Trim>(t))).toUpperCase();
+        const auto vr = name.upToFirstOccurrenceOf(" ", false, false);
+        g.setFont(font(9.0f));
+        g.drawText(vr, r.withY(r.getY() - 16.0f).withHeight(12.0f).expanded(20.0f, 0.0f), juce::Justification::centred);
+        g.setFont(font(7.5f, false));
+        g.drawFittedText(name.fromFirstOccurrenceOf(" ", false, false),
+                         r.withY(r.getBottom() + 4.0f).withHeight(22.0f).expanded(20.0f, 0.0f).toNearestInt(),
+                         juce::Justification::centredTop, 2, 0.8f);
+    }
+
+    // Clock: the four ring cycles of the 5-stage multivibrator Q1-Q5.
+    const float ledY = board.getBottom() - 30.0f;
+    g.setFont(font(9.0f));
+    g.drawText("CLOCK  Q1-Q5", juce::Rectangle<float>(80.0f, ledY - 2.0f, 110.0f, 14.0f), juce::Justification::centredLeft);
+    for (int i = 0; i < mrk1::kPulsesPerCycle; ++i)
+    {
+        const float x = 200.0f + static_cast<float>(i) * 22.0f + static_cast<float>(i / mrk1::kStages) * 26.0f;
+        const auto ledRect = juce::Rectangle<float>(8.0f, 8.0f).withCentre({ x, ledY + 5.0f });
+        const bool on = i == shownPulse_;
+        if (on)
+        {
+            g.setColour(col::led.withAlpha(0.35f));
+            g.fillEllipse(ledRect.expanded(4.0f));
+        }
+        g.setColour(on ? col::led : col::led.darker(2.2f));
+        g.fillEllipse(ledRect);
+    }
+}
+
+void FrontPanel::timerCallback()
+{
+    lamp_.setLit(processor_.downBeatLamp());
+    if (const int pulse = processor_.currentPulse(); pulse != shownPulse_)
+    {
+        shownPulse_ = pulse;
+        if (serviceOpen())
+            repaint(0, kMainHeight + 100, kWidth, kDrawerHeight - 100);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+BeatQueenEditor::BeatQueenEditor(BeatQueenProcessor& p) : AudioProcessorEditor(p), panel_(p)
+{
+    setLookAndFeel(&lookAndFeel_);
+    addAndMakeVisible(panel_);
+    panel_.onServiceToggled = [this] { updateAspect(); };
+    setResizable(true, true);
+    updateAspect();
 }
 
 BeatQueenEditor::~BeatQueenEditor()
@@ -130,165 +338,22 @@ BeatQueenEditor::~BeatQueenEditor()
     setLookAndFeel(nullptr);
 }
 
-void BeatQueenEditor::layoutWindow()
+void BeatQueenEditor::updateAspect()
 {
-    const bool service = serviceToggle_.getToggleState();
-    for (auto& t : trims_)
-        t.setVisible(service);
-    setSize(kWidth, kHeight + (service ? kServiceHeight : 0));
-}
-
-void BeatQueenEditor::paint(juce::Graphics& g)
-{
-    using namespace beatqueen::mrk1;
-    g.fillAll(colours::cabinet);
-
-    // Header.
-    auto header = getLocalBounds().removeFromTop(56).reduced(20, 0);
-    g.setColour(colours::cream);
-    g.setFont(juce::FontOptions(28.0f, juce::Font::bold));
-    g.drawText("BEAT QUEEN", header, juce::Justification::centredLeft);
-    g.setColour(colours::cream.withAlpha(0.6f));
-    g.setFont(juce::FontOptions(13.0f));
-    g.drawText("Maestro Rhythm King MRK-1, simulated from its schematics", header, juce::Justification::centredRight);
-
-    // Rhythm groups.
-    const Category categories[] = { Category::Latin, Category::American, Category::Traditional };
-    for (size_t i = 0; i < groupAreas_.size(); ++i)
+    const double aspect = static_cast<double>(FrontPanel::kWidth) / panel_.baseHeight();
+    const int width = getWidth() > 0 ? getWidth() : FrontPanel::kWidth;
+    if (auto* c = getConstrainer())
     {
-        const auto area = groupAreas_[i];
-        g.setColour(colours::panel);
-        g.fillRoundedRectangle(area.toFloat(), 6.0f);
-        g.setColour(categoryColour(categories[i]).brighter(0.4f));
-        g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-        g.drawText(juce::String(categoryName(categories[i])).toUpperCase(), area.withHeight(22).reduced(10, 0),
-                   juce::Justification::centredLeft);
+        c->setFixedAspectRatio(aspect);
+        c->setSizeLimits(FrontPanel::kWidth / 2, static_cast<int>(FrontPanel::kWidth / 2 / aspect), FrontPanel::kWidth * 2,
+                         static_cast<int>(FrontPanel::kWidth * 2 / aspect));
     }
-
-    // Control labels.
-    g.setColour(colours::cream.withAlpha(0.7f));
-    g.setFont(juce::FontOptions(12.0f));
-    g.drawText("SPEED", speed_.getBounds().withHeight(14).translated(0, -16), juce::Justification::centred);
-    g.drawText("VOLUME", volume_.getBounds().withHeight(14).translated(0, -16), juce::Justification::centred);
-    g.drawText("DOWN BEAT", lampArea_.withHeight(14).translated(0, -18).expanded(20, 0), juce::Justification::centred);
-    g.drawText("CLOCK", pulseArea_.withHeight(14).translated(0, -18), juce::Justification::centredLeft);
-
-    // Down beat lamp.
-    const auto lamp = lampArea_.toFloat();
-    if (lampOn_)
-    {
-        g.setColour(colours::amber.withAlpha(0.35f));
-        g.fillEllipse(lamp.expanded(6.0f));
-    }
-    g.setColour(lampOn_ ? colours::amber : colours::lampOff);
-    g.fillEllipse(lamp);
-
-    // Clock pulses: 4 ring cycles of the 5-stage multivibrator.
-    const float w = static_cast<float>(pulseArea_.getWidth()) / kPulsesPerCycle;
-    for (int i = 0; i < kPulsesPerCycle; ++i)
-    {
-        const auto led = juce::Rectangle<float>(pulseArea_.getX() + i * w, static_cast<float>(pulseArea_.getY()), w,
-                                                static_cast<float>(pulseArea_.getHeight()))
-                             .reduced(i % kStages == 0 ? 1.0f : 2.5f, 0.0f);
-        g.setColour(i == shownPulse_ ? colours::amber : colours::lampOff);
-        g.fillRoundedRectangle(led, 2.0f);
-    }
-
-    // Voice button strip and service panel backgrounds.
-    if (!serviceArea_.isEmpty())
-    {
-        g.setColour(colours::panel);
-        g.fillRoundedRectangle(serviceArea_.toFloat(), 6.0f);
-        g.setColour(colours::cream.withAlpha(0.7f));
-        g.setFont(juce::FontOptions(11.0f));
-        for (int t = 0; t < kNumTrims; ++t)
-            g.drawFittedText(trimName(static_cast<Trim>(t)), trims_[static_cast<size_t>(t)].getBounds().withHeight(26).translated(0, -26),
-                             juce::Justification::centred, 2);
-    }
+    setSize(width, static_cast<int>(std::lround(width / aspect)));
 }
 
 void BeatQueenEditor::resized()
 {
-    using namespace beatqueen::mrk1;
-    auto area = getLocalBounds().reduced(16);
-    area.removeFromTop(44);
-
-    // Rhythm selector groups: 8 Latin, 7 American, 3 Traditional.
-    auto rhythmRow = area.removeFromTop(140);
-    const int groupWidths[] = { 4, 4, 2 }; // button columns per group
-    const int columns = 10;
-    const int gap = 10;
-    const int columnWidth = (rhythmRow.getWidth() - 2 * gap) / columns;
-    int first = 0;
-    const int counts[] = { 8, 7, 3 };
-    for (int grp = 0; grp < 3; ++grp)
-    {
-        auto groupArea = rhythmRow.removeFromLeft(columnWidth * groupWidths[grp]);
-        rhythmRow.removeFromLeft(gap);
-        groupAreas_[static_cast<size_t>(grp)] = groupArea;
-        auto inner = groupArea.reduced(8);
-        inner.removeFromTop(16);
-        const int rows = 2;
-        const int bw = inner.getWidth() / groupWidths[grp];
-        const int bh = inner.getHeight() / rows;
-        for (int i = 0; i < counts[grp]; ++i)
-        {
-            const int col = i % groupWidths[grp], row = i / groupWidths[grp];
-            rhythmButtons_[static_cast<size_t>(first + i)].setBounds(
-                juce::Rectangle<int>(inner.getX() + col * bw, inner.getY() + row * bh, bw, bh).reduced(3));
-        }
-        first += counts[grp];
-    }
-
-    // Front controls.
-    area.removeFromTop(24);
-    auto controls = area.removeFromTop(120);
-    controls.removeFromTop(16);
-    volume_.setBounds(controls.removeFromLeft(100));
-    controls.removeFromLeft(16);
-    speed_.setBounds(controls.removeFromLeft(100));
-    controls.removeFromLeft(24);
-    auto transport = controls.removeFromLeft(150);
-    start_.setBounds(transport.removeFromTop(44));
-    transport.removeFromTop(8);
-    hostSync_.setBounds(transport.removeFromTop(24));
-    controls.removeFromLeft(40);
-    lampArea_ = controls.removeFromLeft(40).withSizeKeepingCentre(26, 26).translated(0, -18);
-    controls.removeFromLeft(40);
-    pulseArea_ = controls.withTrimmedRight(4).withHeight(14).translated(0, 22);
-
-    // Voice push buttons.
-    area.removeFromTop(16);
-    auto voices = area.removeFromTop(56);
-    const int vw = voices.getWidth() / kNumButtons;
-    for (auto& vb : voiceButtons_)
-        vb.setBounds(voices.removeFromLeft(vw).reduced(5, 2));
-
-    area.removeFromTop(16);
-    serviceToggle_.setBounds(area.removeFromTop(28).removeFromLeft(200));
-
-    serviceArea_ = {};
-    if (serviceToggle_.getToggleState())
-    {
-        area.removeFromTop(12);
-        serviceArea_ = area.removeFromTop(kServiceHeight - 30);
-        auto knobs = serviceArea_.reduced(8);
-        knobs.removeFromTop(26);
-        const int kw = knobs.getWidth() / kNumTrims;
-        for (auto& t : trims_)
-            t.setBounds(knobs.removeFromLeft(kw).reduced(4, 0));
-    }
-}
-
-void BeatQueenEditor::timerCallback()
-{
-    const bool lamp = processor_.downBeatLamp();
-    const int pulse = processor_.currentPulse();
-    if (lamp != lampOn_ || pulse != shownPulse_)
-    {
-        lampOn_ = lamp;
-        shownPulse_ = pulse;
-        repaint(lampArea_.expanded(8));
-        repaint(pulseArea_);
-    }
+    panel_.setBounds(0, 0, FrontPanel::kWidth, panel_.baseHeight());
+    const float scale = static_cast<float>(getWidth()) / FrontPanel::kWidth;
+    panel_.setTransform(juce::AffineTransform::scale(scale));
 }

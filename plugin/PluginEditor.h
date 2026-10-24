@@ -1,72 +1,73 @@
 #pragma once
 
+#include "PanelComponents.h"
 #include "PluginProcessor.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include <array>
-#include <functional>
 #include <memory>
 
-// A push button that reports both press and release (the MRK-1 voice buttons).
-class MomentaryButton final : public juce::TextButton
+// The whole instrument, drawn at a fixed base size; the editor scales it.
+class FrontPanel final : public juce::Component, private juce::Timer
 {
 public:
-    using juce::TextButton::TextButton;
-    std::function<void(bool)> onPressChanged;
+    static constexpr int kWidth = 1120;
+    static constexpr int kMainHeight = 540;
+    static constexpr int kDrawerHeight = 200;
 
-private:
-    void buttonStateChanged() override
-    {
-        juce::TextButton::buttonStateChanged();
-        if (const bool down = isDown(); down != wasDown_)
-        {
-            wasDown_ = down;
-            if (onPressChanged)
-                onPressChanged(down);
-        }
-    }
-    bool wasDown_ = false;
-};
+    explicit FrontPanel(BeatQueenProcessor&);
 
-class BeatQueenEditor final : public juce::AudioProcessorEditor, private juce::Timer
-{
-public:
-    explicit BeatQueenEditor(BeatQueenProcessor&);
-    ~BeatQueenEditor() override;
+    int baseHeight() const { return kMainHeight + (serviceOpen() ? kDrawerHeight : 0); }
+    bool serviceOpen() const { return service_.getToggleState(); }
+    std::function<void()> onServiceToggled;
 
     void paint(juce::Graphics&) override;
     void resized() override;
 
 private:
     void timerCallback() override;
-    void layoutWindow();
+    void paintDrawer(juce::Graphics&);
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     BeatQueenProcessor& processor_;
-    juce::LookAndFeel_V4 lookAndFeel_;
+    juce::Image tolex_, metal_;
 
-    std::array<juce::TextButton, beatqueen::mrk1::kNumRhythms> rhythmButtons_;
-    std::array<std::unique_ptr<ButtonAttachment>, beatqueen::mrk1::kNumRhythms> rhythmAttachments_;
+    std::vector<std::unique_ptr<beatqueen::ui::RhythmKey>> rhythmKeys_;
+    std::vector<std::unique_ptr<ButtonAttachment>> rhythmAttachments_;
 
-    juce::Slider speed_, volume_;
-    std::unique_ptr<SliderAttachment> speedAttachment_, volumeAttachment_;
-    juce::TextButton start_ { "START" };
-    juce::ToggleButton hostSync_ { "Host sync" };
-    std::unique_ptr<ButtonAttachment> startAttachment_, hostSyncAttachment_;
+    beatqueen::ui::Lamp lamp_;
+    beatqueen::ui::ToggleSwitch hostSync_;
+    beatqueen::ui::RockerSwitch start_;
+    juce::Slider volume_, speed_;
+    std::unique_ptr<SliderAttachment> volumeAttachment_, speedAttachment_;
+    std::unique_ptr<ButtonAttachment> hostSyncAttachment_, startAttachment_;
 
-    std::array<MomentaryButton, beatqueen::mrk1::kNumButtons> voiceButtons_;
+    std::array<beatqueen::ui::VoiceKey, beatqueen::mrk1::kNumButtons> voiceKeys_;
 
-    juce::TextButton serviceToggle_ { "Service adjustments" };
+    juce::TextButton service_ { "SERVICE" };
     std::array<juce::Slider, beatqueen::mrk1::kNumTrims> trims_;
     std::array<std::unique_ptr<SliderAttachment>, beatqueen::mrk1::kNumTrims> trimAttachments_;
-
-    std::array<juce::Rectangle<int>, 3> groupAreas_;
-    juce::Rectangle<int> lampArea_, pulseArea_, serviceArea_;
-    bool lampOn_ = false;
     int shownPulse_ = -1;
+
+    juce::TooltipWindow tooltips_ { this, 600 };
+};
+
+class BeatQueenEditor final : public juce::AudioProcessorEditor
+{
+public:
+    explicit BeatQueenEditor(BeatQueenProcessor&);
+    ~BeatQueenEditor() override;
+
+    void resized() override;
+
+private:
+    void updateAspect();
+
+    beatqueen::ui::PanelLookAndFeel lookAndFeel_;
+    FrontPanel panel_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BeatQueenEditor)
 };
